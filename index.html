@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Morphing Geometric Shapes</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000000;
+            font-family: 'Inter', sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        .info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #ffffff;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px 15px;
+            border-radius: 10px;
+            font-size: 14px;
+            max-width: 300px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <!-- The info div has been removed -->
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // --- Main Application ---
+        let scene, camera, renderer, objectGroup, clock;
+        const dots = [];
+        let mouse = new THREE.Vector2();
+        let currentShapeIndex = 0;
+        // Removed 'apple' from the shapes array
+        const shapes = ['cube', 'circle', 'sphere', 'pyramid', 'logo'];
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 25;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.body.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 4.0);
+            directionalLight.position.set(30, 10, 10);
+            scene.add(directionalLight);
+            const pointLight = new THREE.PointLight(0xffffff, 1.0);
+            pointLight.position.set(-20, -10, -10);
+            scene.add(pointLight);
+
+            clock = new THREE.Clock();
+            
+            // --- Create Morphing Object ---
+            objectGroup = new THREE.Group();
+            scene.add(objectGroup);
+            
+            const totalDots = 4096; 
+            const dotGeometry = new THREE.SphereGeometry(0.06, 16, 16);
+            const material = getGlassMaterial();
+
+            const cubePositions = generateCubePositions(totalDots);
+            const circlePositions = generateCirclePositions(totalDots);
+            const spherePositions = generateSpherePositions(totalDots);
+            const pyramidPositions = generatePyramidPositions(totalDots);
+            const { logoPositions, logoColors } = generateLogoPositions(totalDots);
+
+            for (let i = 0; i < totalDots; i++) {
+                const dot = new THREE.Mesh(dotGeometry, material.clone());
+                
+                dot.cubePosition = cubePositions[i];
+                dot.circlePosition = circlePositions[i];
+                dot.spherePosition = spherePositions[i];
+                dot.pyramidPosition = pyramidPositions[i];
+                dot.logoPosition = logoPositions[i];
+
+                dot.baseColor = new THREE.Color(0xffffff);
+                dot.logoColor = logoColors[i];
+
+                dot.position.copy(dot.cubePosition);
+
+                objectGroup.add(dot);
+                dots.push(dot);
+            }
+
+            setInterval(() => {
+                currentShapeIndex = (currentShapeIndex + 1) % shapes.length;
+            }, 10000);
+
+            window.addEventListener('resize', onWindowResize, false);
+            document.addEventListener('mousemove', onMouseMove, false);
+
+            animate();
+        }
+        
+        function getGlassMaterial() {
+            return new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.4,
+                roughness: 0.05,
+                metalness: 0.1,
+                transmission: 0.95,
+                ior: 1.5,
+                thickness: 0.5
+            });
+        }
+
+        // --- Position Generation Functions ---
+
+        function generateCubePositions(count) {
+            const positions = [];
+            const pointsPerFace = Math.floor(count / 6);
+            const pointsPerRow = Math.round(Math.sqrt(pointsPerFace));
+            const cubeSize = 14;
+            const halfSize = cubeSize / 2;
+
+            function createFace(axis1, axis2, axis3, fixedValue) {
+                for (let i = 0; i < pointsPerRow; i++) {
+                    for (let j = 0; j < pointsPerRow; j++) {
+                        const pos = new THREE.Vector3();
+                        pos[axis1] = (i / (pointsPerRow - 1) - 0.5) * cubeSize;
+                        pos[axis2] = (j / (pointsPerRow - 1) - 0.5) * cubeSize;
+                        pos[axis3] = fixedValue;
+                        positions.push(pos);
+                    }
+                }
+            }
+
+            createFace('x', 'y', 'z', halfSize);
+            createFace('x', 'y', 'z', -halfSize);
+            createFace('z', 'y', 'x', halfSize);
+            createFace('z', 'y', 'x', -halfSize);
+            createFace('x', 'z', 'y', halfSize);
+            createFace('x', 'z', 'y', -halfSize);
+
+            while (positions.length < count) {
+                positions.push(positions[Math.floor(Math.random() * positions.length)].clone());
+            }
+            
+            return positions.slice(0, count);
+        }
+
+        function generateCirclePositions(count) {
+            const positions = [];
+            const R = 5.2; 
+            const r = 1.8; 
+
+            const ratio = R / r;
+            const numSegments = Math.round(Math.sqrt(count / ratio));
+            const numRings = Math.round(count / numSegments);
+
+            for (let i = 0; i < numRings; i++) {
+                for (let j = 0; j < numSegments; j++) {
+                    const theta = (i / numRings) * 2 * Math.PI;
+                    const phi = (j / numSegments) * 2 * Math.PI;
+
+                    const x = (R + r * Math.cos(phi)) * Math.cos(theta);
+                    const y = (R + r * Math.cos(phi)) * Math.sin(theta);
+                    const z = r * Math.sin(phi);
+                    
+                    positions.push(new THREE.Vector3(x, z, y));
+                }
+            }
+            
+            while (positions.length < count) {
+                positions.push(positions[Math.floor(Math.random() * positions.length)].clone());
+            }
+
+            return positions.slice(0, count);
+        }
+
+        function generateSpherePositions(count) {
+            const positions = [];
+            const radius = 7;
+            
+            const phi = Math.PI * (3. - Math.sqrt(5.));
+
+            for (let i = 0; i < count; i++) {
+                const y = 1 - (i / (count - 1)) * 2;
+                const radiusAtY = Math.sqrt(1 - y * y);
+                const theta = phi * i;
+                const x = Math.cos(theta) * radiusAtY;
+                const z = Math.sin(theta) * radiusAtY;
+                positions.push(new THREE.Vector3(x * radius, y * radius, z * radius));
+            }
+
+            return positions;
+        }
+
+        function generatePyramidPositions(count) {
+            const positions = [];
+            const height = 14;
+            const baseSize = 14;
+            const halfBase = baseSize / 2;
+            const apex = new THREE.Vector3(0, height / 2, 0);
+
+            const baseArea = baseSize * baseSize;
+            const sideSlopeLength = Math.sqrt(height * height + halfBase * halfBase);
+            const sideArea = 0.5 * baseSize * sideSlopeLength;
+            const totalArea = baseArea + 4 * sideArea;
+
+            const dotsForBase = Math.floor(count * (baseArea / totalArea));
+            const dotsForSide = Math.floor((count - dotsForBase) / 4);
+
+            const basePointsPerRow = Math.round(Math.sqrt(dotsForBase));
+            for (let i = 0; i < basePointsPerRow; i++) {
+                for (let j = 0; j < basePointsPerRow; j++) {
+                    const x = (i / (basePointsPerRow - 1) - 0.5) * baseSize;
+                    const z = (j / (basePointsPerRow - 1) - 0.5) * baseSize;
+                    positions.push(new THREE.Vector3(x, -height / 2, z));
+                }
+            }
+
+            const sideSteps = Math.floor(Math.sqrt(dotsForSide * 2) - 1);
+            const baseVertices = [
+                new THREE.Vector3(-halfBase, -height / 2, -halfBase),
+                new THREE.Vector3(halfBase, -height / 2, -halfBase),
+                new THREE.Vector3(halfBase, -height / 2, halfBase),
+                new THREE.Vector3(-halfBase, -height / 2, halfBase)
+            ];
+
+            for (let i = 0; i < 4; i++) {
+                const v1 = apex;
+                const v2 = baseVertices[i];
+                const v3 = baseVertices[(i + 1) % 4];
+
+                for (let j = 0; j <= sideSteps; j++) {
+                    const u = j / sideSteps;
+                    const p1 = new THREE.Vector3().lerpVectors(v1, v2, u);
+                    const p2 = new THREE.Vector3().lerpVectors(v1, v3, u);
+
+                    for (let k = 0; k <= j; k++) {
+                        const v = (j === 0) ? 0 : k / j;
+                        const point = new THREE.Vector3().lerpVectors(p1, p2, v);
+                        positions.push(point);
+                    }
+                }
+            }
+
+            while (positions.length < count) {
+                positions.push(positions[Math.floor(Math.random() * positions.length)].clone());
+            }
+
+            return positions.slice(0, count);
+        }
+
+        function generateLogoPositions(count) {
+            const positions = [];
+            const colors = [];
+            const squareSize = 6.5;
+            const gap = 0.8;
+            const offset = squareSize / 2 + gap / 2;
+
+            const logoColors = [
+                new THREE.Color(0xf25022), // Red
+                new THREE.Color(0x7fba00), // Green
+                new THREE.Color(0x00a4ef), // Blue
+                new THREE.Color(0xffb900)  // Yellow
+            ];
+
+            const offsets = [
+                { x: -offset, y: offset },  // Top-left
+                { x: offset, y: offset },   // Top-right
+                { x: -offset, y: -offset }, // Bottom-left
+                { x: offset, y: -offset }   // Bottom-right
+            ];
+
+            const dotsPerSquare = count / 4;
+            const pointsPerRow = Math.sqrt(dotsPerSquare);
+
+            for (let i = 0; i < 4; i++) {
+                for (let row = 0; row < pointsPerRow; row++) {
+                    for (let col = 0; col < pointsPerRow; col++) {
+                        const x = (col / (pointsPerRow - 1) - 0.5) * squareSize + offsets[i].x;
+                        const y = (row / (pointsPerRow - 1) - 0.5) * squareSize + offsets[i].y;
+                        positions.push(new THREE.Vector3(x, y, 0));
+                        colors.push(logoColors[i]);
+                    }
+                }
+            }
+
+            return { logoPositions: positions, logoColors: colors };
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function onMouseMove(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const elapsedTime = clock.getElapsedTime();
+            const currentShape = shapes[currentShapeIndex];
+            const lerpFactor = 0.05;
+
+            // --- Animate Object ---
+            if (currentShape === 'logo') {
+                objectGroup.rotation.x += (0 - objectGroup.rotation.x) * lerpFactor;
+                objectGroup.rotation.y += (0 - objectGroup.rotation.y) * lerpFactor;
+                objectGroup.rotation.z += (0 - objectGroup.rotation.z) * lerpFactor;
+            } else {
+                const targetRotationX = mouse.y * 0.5; 
+                const targetRotationY = mouse.x * 0.5 + elapsedTime * 0.1;
+                objectGroup.rotation.x += (targetRotationX - objectGroup.rotation.x) * lerpFactor;
+                objectGroup.rotation.y += (targetRotationY - objectGroup.rotation.y) * lerpFactor;
+                
+                objectGroup.rotation.z *= 0.95;
+                if (currentShape === 'circle') {
+                    objectGroup.rotation.z += 0.005;
+                }
+            }
+
+            // --- Morphing Logic ---
+            const morphLerpFactor = 0.03;
+            dots.forEach(dot => {
+                let targetPosition;
+                let targetColor;
+
+                if (currentShape === 'cube') {
+                    targetPosition = dot.cubePosition;
+                    targetColor = dot.baseColor;
+                } else if (currentShape === 'circle') {
+                    targetPosition = dot.circlePosition;
+                    targetColor = dot.baseColor;
+                } else if (currentShape === 'sphere') {
+                    targetPosition = dot.spherePosition;
+                    targetColor = dot.baseColor;
+                } else if (currentShape === 'pyramid') {
+                    targetPosition = dot.pyramidPosition;
+                    targetColor = dot.baseColor;
+                } else { // logo
+                    targetPosition = dot.logoPosition;
+                    targetColor = dot.logoColor;
+                }
+                dot.position.lerp(targetPosition, morphLerpFactor);
+                dot.material.color.lerp(targetColor, morphLerpFactor);
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        init();
+    </script>
+</body>
+</html>
